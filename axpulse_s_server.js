@@ -501,6 +501,180 @@ app.get('/api/axpulse-s/status', (req, res) => {
   });
 });
 
+/**
+ * Panel Web Oficial de Demostración y Auditoría para TikTok Developer Review
+ * GET / (o /demo)
+ */
+app.get('/', (req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Médica Frontera — AXpulse-S Social Posting Hub (TikTok Content API)</title>
+  <style>
+    :root {
+      --primary: #0284C7;
+      --primary-dark: #0369A1;
+      --emerald: #059669;
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --text: #0F172A;
+      --text-muted: #64748B;
+      --border: #E2E8F0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 40px 20px; line-height: 1.5; }
+    .container { max-width: 900px; margin: 0 auto; }
+    .header { text-align: center; margin-bottom: 32px; }
+    .header h1 { font-size: 26px; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .header p { color: var(--text-muted); font-size: 15px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .card h2 { font-size: 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; color: #1E293B; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #ECFDF5; color: var(--emerald); border: 1px solid #A7F3D0; }
+    .badge.oauth { background: #F0F9FF; color: var(--primary); border-color: #BAE6FD; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer; transition: all 0.2s; border: none; width: 100%; }
+    .btn-tiktok { background: #000000; color: #FFFFFF; }
+    .btn-tiktok:hover { background: #18181B; }
+    .btn-primary { background: var(--primary); color: #FFFFFF; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .video-preview { border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 9/16; max-height: 420px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; }
+    .video-preview video { width: 100%; height: 100%; object-fit: cover; }
+    .meta-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1F5F9; font-size: 13px; }
+    .meta-item:last-child { border-bottom: none; }
+    .meta-item span:first-child { color: var(--text-muted); }
+    .meta-item span:last-child { font-weight: 500; }
+    .compliance-box { background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 10px; padding: 12px; font-size: 12px; color: #475569; margin-top: 16px; }
+    .footer { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 40px; border-top: 1px solid var(--border); padding-top: 20px; }
+    .footer a { color: var(--primary); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🛡️ Médica Frontera — Hub de Publicación TikTok</h1>
+      <p>AXpulse-S Automated Social Dispatcher • Content Posting API v2 • Remotion Clinical Engine</p>
+    </div>
+
+    <div class="grid">
+      <!-- Columna 1: Autorización y Cuentas -->
+      <div class="card">
+        <h2>🔗 Conexión de Creador TikTok</h2>
+        <div style="margin-bottom: 16px;">
+          <span class="badge oauth">OAuth 2.0 Direct</span>
+          <span class="badge">App ID: 7688014162606409748</span>
+        </div>
+        <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 20px;">
+          Permite al titular médico conectar su cuenta <b>@medicafrontera</b> para autorizar la publicación directa de cápsulas educativas y avisos de salud.
+        </p>
+
+        <a href="/api/axpulse-s/auth/tiktok/login" class="btn btn-tiktok">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.04-.1z"/></svg>
+          Conectar / Renovar Token @medicafrontera
+        </a>
+
+        <div style="margin-top: 24px;">
+          <h3 style="font-size: 14px; margin-bottom: 10px; color: #334155;">Estado de la Integración:</h3>
+          <div class="meta-item">
+            <span>Canal:</span>
+            <span>TikTok Direct Post v2</span>
+          </div>
+          <div class="meta-item">
+            <span>Método de Subida:</span>
+            <span>FILE_UPLOAD (Stream Binario)</span>
+          </div>
+          <div class="meta-item">
+            <span>Scopes Solicitados:</span>
+            <span>user.info.basic, video.publish, video.upload</span>
+          </div>
+          <div class="meta-item">
+            <span>Tenant Activo:</span>
+            <span>medica_frontera (Hospitalario)</span>
+          </div>
+        </div>
+
+        <div class="compliance-box">
+          ⚖️ <b>Aviso Legal Obligatorio:</b> Aviso de Publicidad COFEPRIS No. 2407012002A00464. Todos los posts incluyen descargo clínico y enlaces a políticas de privacidad conforme a los lineamientos sanitarios de México.
+        </div>
+      </div>
+
+      <!-- Columna 2: Video Clínico y Despacho -->
+      <div class="card">
+        <h2>🎬 Video Clínico Listo para Envío</h2>
+        <div class="video-preview">
+          <video controls poster="https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4">
+            <source src="https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4" type="video/mp4">
+            Tu navegador no soporta video MP4.
+          </video>
+        </div>
+
+        <div class="meta-item">
+          <span>Resolución:</span>
+          <span>1080 x 1920 (Vertical 9:16)</span>
+        </div>
+        <div class="meta-item">
+          <span>Audio:</span>
+          <span>Voz-off médica sincronizada + BGM (-18dB)</span>
+        </div>
+        <div class="meta-item">
+          <span>Motor Gráfico:</span>
+          <span>Remotion 4.0 (Lienzo Clínico Blanco)</span>
+        </div>
+
+        <button onclick="dispatchPost()" id="dispatchBtn" class="btn btn-primary" style="margin-top: 16px;">
+          🚀 Disparar Envío a TikTok (@medicafrontera)
+        </button>
+        <div id="dispatchMsg" style="margin-top: 12px; font-size: 13px; text-align: center;"></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>Médica Frontera • APEX Consilium • <a href="https://medicafrontera.com/privacidad" target="_blank">Aviso de Privacidad</a> • <a href="https://medicafrontera.com/terminos" target="_blank">Términos del Servicio</a></p>
+    </div>
+  </div>
+
+  <script>
+    async function dispatchPost() {
+      const btn = document.getElementById('dispatchBtn');
+      const msg = document.getElementById('dispatchMsg');
+      btn.disabled = true;
+      btn.innerText = 'Transfiriendo a TikTok...';
+      msg.innerHTML = '<span style="color: #0284C7;">Procesando video binario y contactando TikTok API...</span>';
+
+      try {
+        const resp = await fetch('/api/axpulse-s/dispatch-clinical-post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            headline: 'Médica Frontera — Urología Reconstructiva (COFEPRIS 2407012002A00464)',
+            copy: 'Procedimientos de alta especialidad urológica y reconstructiva en Médica Frontera.',
+            video_url: 'https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4',
+            channels: ['tiktok']
+          })
+        });
+        const data = await resp.json();
+        if (data.dispatched && data.dispatched[0] && data.dispatched[0].success) {
+          msg.innerHTML = '<span style="color: #059669; font-weight: 600;">✅ ¡Publicación exitosa en TikTok! Publish ID: ' + (data.dispatched[0].publish_id || 'OK') + '</span>';
+        } else {
+          msg.innerHTML = '<span style="color: #DC2626;">Aviso: ' + JSON.stringify(data.dispatched ? data.dispatched[0] : data) + '</span>';
+        }
+      } catch (e) {
+        msg.innerHTML = '<span style="color: #DC2626;">Error: ' + e.message + '</span>';
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '🚀 Disparar Envío a TikTok (@medicafrontera)';
+      }
+    }
+  </script>
+</body>
+</html>
+  `);
+});
+
+
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`[AXpulse-S] Servidor escuchando en http://localhost:${PORT}`);
