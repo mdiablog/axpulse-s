@@ -13,7 +13,7 @@ const fs = require('fs');
 // Módulos de Gobernanza ADR-037 & Producción Cloud
 const { humanizeClinicalText, validateScriptForVoiceover } = require('./humanizer_filter');
 const { triggerCloudRender, getLatestWorkflowRuns } = require('./cloud_render_bridge');
-const { enqueueContentItem, getWeeklyScheduleStatus, WEEKLY_LIMITS } = require('./weekly_scheduler');
+const { enqueueContentItem, getWeeklyScheduleStatus, executeCronTick, WEEKLY_LIMITS } = require('./weekly_scheduler');
 
 const app = express();
 app.use(express.json());
@@ -583,6 +583,60 @@ app.post('/api/axpulse-s/schedule/add', requireAuth, (req, res) => {
   }
 
   return res.json(result);
+});
+
+/**
+  * POST /api/axpulse-s/schedule/cron-tick
+  * Disparador automático de cron horario (Neubox cPanel / Render).
+  * Evalúa si hay slots programados para la hora y día actual (CDMX) y despacha a redes.
+  */
+app.post('/api/axpulse-s/schedule/cron-tick', requireAuth, async (req, res) => {
+  try {
+    const forceDay = req.query.force_day !== undefined ? parseInt(req.query.force_day) : undefined;
+    const forceHour = req.query.force_hour !== undefined ? parseInt(req.query.force_hour) : undefined;
+    const forceSlot = req.query.force_slot === 'true' || req.body?.force_slot === true;
+
+    console.log(`[AXpulse-S Cron Tick] Iniciando pulso horario (forceDay=${forceDay}, forceHour=${forceHour}, forceSlot=${forceSlot})...`);
+
+    const tickResult = await executeCronTick(async (item, slot) => {
+      const channels = [];
+      if (slot.channel === 'tiktok') channels.push('tiktok');
+      if (slot.channel === 'instagram_reels') channels.push('instagram');
+      if (slot.channel === 'instagram_carousels') channels.push('instagram');
+      if (slot.channel === 'facebook_feed') channels.push('facebook');
+      if (slot.channel === 'youtube_shorts' || slot.channel === 'youtube_long') channels.push('youtube');
+
+      const payload = {
+        topic: item.content_type,
+        headline: item.headline,
+        copy: item.copy,
+        video_url: item.video_url,
+        channels: channels.length ? channels : ['facebook'],
+        metadata: {
+          slot_hour: slot.hour,
+          content_type: slot.type,
+          cofepris_folio: "2407012002A00464"
+        }
+      };
+
+      console.log(`[AXpulse-S Cron Tick] Despachando slot ${slot.channel} (${slot.type})...`);
+      const dispatchResp = await axios.post(`http://localhost:${PORT}/api/axpulse-s/dispatch-clinical-post`, payload, {
+        headers: { 'Authorization': `Bearer ${process.env.AXPULSE_API_SECRET || "sk_apex_consilium_2026_master_key"}` },
+        timeout: 60000
+      });
+
+      return dispatchResp.data;
+    }, { forceDay, forceHour, forceSlot });
+
+    return res.json({
+      success: true,
+      governance: "ADR-037 Weekly Schedule Tick",
+      tick: tickResult
+    });
+  } catch (err) {
+    console.error("[AXpulse-S Cron Tick Error]", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 /**

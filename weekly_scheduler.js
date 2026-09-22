@@ -224,6 +224,150 @@ function getWeeklyScheduleStatus() {
   };
 }
 
+/**
+ * Pulso horario del orquestador (cron-tick)
+ * Determina qué slots de DAY_SCHEDULE_MATRIX corresponden al día y hora actual en America/Mexico_City
+ * e invoca el despacho correspondiente respetando los límites anti-spam de ADR-037.
+ */
+async function executeCronTick(dispatchHandler, options = {}) {
+  const queue = loadQueue();
+  const now = new Date();
+
+  // Obtener día de semana (0=Dom, 1=Lun, ..., 6=Sáb) y hora en CDMX
+  const cdmxDateStr = now.toLocaleString("en-US", { timeZone: "America/Mexico_City" });
+  const cdmxDate = new Date(cdmxDateStr);
+  const currentDay = options.forceDay !== undefined ? options.forceDay : cdmxDate.getDay();
+  const currentHour = options.forceHour !== undefined ? options.forceHour : cdmxDate.getHours();
+  const currentWeek = getWeekId(cdmxDate);
+
+  const dayConfig = DAY_SCHEDULE_MATRIX[currentDay];
+  if (!dayConfig || !dayConfig.slots) {
+    return {
+      status: 'IDLE_NO_SLOTS',
+      day: currentDay,
+      hour: currentHour,
+      timeZone: 'America/Mexico_City',
+      message: 'No hay slots configurados para este día.'
+    };
+  }
+
+  // Filtrar slots de la hora actual (o todos si forceSlot está activo)
+  const dueSlots = options.forceSlot 
+    ? dayConfig.slots 
+    : dayConfig.slots.filter(slot => slot.hour === currentHour);
+
+  if (dueSlots.length === 0) {
+    return {
+      status: 'IDLE_HOUR_CLEAR',
+      day: currentDay,
+      hour: currentHour,
+      timeZone: 'America/Mexico_City',
+      message: `Hora ${currentHour}:00 CDMX sin publicaciones programadas.`
+    };
+  }
+
+  const results = [];
+  for (const slot of dueSlots) {
+    const queueIdx = queue.items.findIndex(it => 
+      it.channel === slot.channel && 
+      it.status === 'scheduled' &&
+      it.week_id === currentWeek
+    );
+
+    let itemToDispatch = null;
+    if (queueIdx !== -1) {
+      itemToDispatch = queue.items[queueIdx];
+    } else {
+      const defaultHeadlineMap = {
+        'tiktok': 'Médica Frontera — Procedimientos Urológicos de Vanguardia',
+        'youtube_shorts': 'Médica Frontera — Implantes y Reconstrucción Urológica',
+        'youtube_long': 'Médica Frontera — Guía Quirúrgica de Alta Especialidad Urológica',
+        'instagram_reels': 'Médica Frontera — Estándares Quirúrgicos y Certificación Médica',
+        'instagram_carousels': 'Médica Frontera — Todo lo que debes saber antes de una valoración médica',
+        'facebook_feed': 'Médica Frontera — Salud Urológica y Procedimientos Avanzados',
+        'blog': 'Avances en Cirugía Urológica y Reconstructiva en México'
+      };
+
+      const defaultCopyMap = {
+        'tiktok': 'Conoce las técnicas de alta especialidad urológica y estética masculina en Médica Frontera con estándares de vanguardia.',
+        'youtube_shorts': 'Procedimientos urológicos avanzados con certificación hospitalaria.',
+        'youtube_long': 'Análisis clínico profundo y protocolos quirúrgicos en Médica Frontera.',
+        'instagram_reels': 'Privacidad absoluta, instalaciones quirúrgicas de primer nivel y seguimiento postoperatorio continuo.',
+        'instagram_carousels': 'Descubre los aspectos clave sobre la prevaloración médica y protocolos de seguridad.',
+        'facebook_feed': 'Médica Frontera ofrece soluciones avanzadas en urología y reconstructiva.',
+        'blog': 'Revisión médica especializada sobre procedimientos reconstructivos y calidad de vida.'
+      };
+
+      const enq = enqueueContentItem({
+        channel: slot.channel,
+        content_type: slot.type,
+        headline: defaultHeadlineMap[slot.channel] || 'Médica Frontera — Urología de Alta Especialidad',
+        copy: defaultCopyMap[slot.channel] || 'Protocolos médicos certificados con respaldo institucional.',
+        video_url: (slot.format === '9:16') ? 'https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4' : null,
+        scheduled_day: currentDay,
+        scheduled_hour: currentHour
+      });
+
+      if (enq.success) {
+        itemToDispatch = enq.item;
+      } else {
+        results.push({
+          slot,
+          status: 'SKIPPED_CAP',
+          reason: enq.error
+        });
+        continue;
+      }
+    }
+
+    if (dispatchHandler && itemToDispatch) {
+      try {
+        const dispatchRes = await dispatchHandler(itemToDispatch, slot);
+        itemToDispatch.status = 'published';
+        itemToDispatch.published_at = new Date().toISOString();
+        itemToDispatch.dispatch_result = dispatchRes;
+        
+        queue.items = queue.items.filter(it => it.id !== itemToDispatch.id);
+        queue.published_history = queue.published_history || [];
+        queue.published_history.push(itemToDispatch);
+        saveQueue(queue);
+
+        results.push({
+          slot,
+          item_id: itemToDispatch.id,
+          status: 'DISPATCHED',
+          dispatch_result: dispatchRes
+        });
+      } catch (dispErr) {
+        itemToDispatch.status = 'error';
+        itemToDispatch.last_error = dispErr.message;
+        saveQueue(queue);
+        results.push({
+          slot,
+          item_id: itemToDispatch.id,
+          status: 'ERROR',
+          error: dispErr.message
+        });
+      }
+    } else {
+      results.push({
+        slot,
+        item: itemToDispatch,
+        status: 'READY'
+      });
+    }
+  }
+
+  return {
+    status: 'TICK_PROCESSED',
+    day: currentDay,
+    hour: currentHour,
+    timeZone: 'America/Mexico_City',
+    slots_evaluated: dueSlots.length,
+    results
+  };
+}
+
 module.exports = {
   WEEKLY_LIMITS,
   DAY_SCHEDULE_MATRIX,
@@ -231,5 +375,6 @@ module.exports = {
   saveQueue,
   enqueueContentItem,
   getWeeklyScheduleStatus,
+  executeCronTick,
   getWeekId
 };
