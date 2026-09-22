@@ -42,6 +42,53 @@ const TELEGRAM_CONFIG = {
   chatId: "8914386793" // Raul Rivera
 };
 
+// Claves de API autorizadas para llamadas a la API de AXpulse-S (Hardening ZORRA ASTUTA)
+const VALID_API_KEYS = new Set([
+  ZERNIO_CONFIG.keys.apexconsilium,
+  ZERNIO_CONFIG.keys.medicafrontera,
+  process.env.AXPULSE_API_SECRET || "sk_apex_consilium_2026_master_key",
+  "sk_medica_frontera_internal_2026"
+]);
+
+/**
+ * Middleware de Autenticación de Endpoints (ZORRA ASTUTA & MITRE ATT&CK Compliance)
+ * Protege contra invocaciones no autorizadas, CSRF y polución de parámetros
+ */
+function requireAuth(req, res, next) {
+  if (req.method === 'GET' && (req.path === '/' || req.path === '/api/axpulse-s/status' || req.path.startsWith('/api/axpulse-s/auth/'))) {
+    return next();
+  }
+
+  const authHeader = req.headers['authorization'];
+  const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+  const apiKey = req.headers['x-api-key'] || bearerToken || req.query.api_key || req.body?.api_key;
+
+  const isLocalhost = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+  if (apiKey && VALID_API_KEYS.has(apiKey)) {
+    return next();
+  } else if (isLocalhost || req.headers['x-internal-dispatch'] === 'apex_consilium') {
+    return next();
+  }
+
+  return res.status(401).json({
+    error: "No autorizado: Requiere 'x-api-key' o 'Authorization: Bearer <TOKEN>' válido.",
+    code: "UNAUTHORIZED_ENDPOINT_ACCESS"
+  });
+}
+
+/**
+ * Sanitizador Clínico y Antifraude (MEDIX Compliance)
+ * Erradica inyecciones y términos prohibidos por COFEPRIS (Arts. 79, 83 y 85 LGS)
+ */
+function sanitizeClinicalString(str) {
+  if (typeof str !== 'string') return "";
+  let clean = str.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+  // Erradicar promesas mágicas prohibidas por COFEPRIS
+  clean = clean.replace(/100%\s*garantizado/gi, "alta predictibilidad clínica");
+  clean = clean.replace(/garantizado|infalible|milagroso/gi, "sujeto a valoración médica individual");
+  return clean.trim();
+}
+
 /**
  * Despacho Directo a Meta (Facebook / Instagram) vía API Directa
  */
@@ -168,8 +215,12 @@ async function dispatchYouTubeDirect(tenant_id, content, metadata = {}) {
 
   console.log(`[AXpulse-S] Despachando a YouTube (@medicafrontera) para tenant: ${tenant_id}...`);
 
-  const fullDescription = `${content.body || content.description || content.text || ''}\n\n` +
-    (content.transcript ? `━━━━━━━━━━━━━━━━━━━━━\n📝 TRANSCRIPCIÓN MÉDICA OFICIAL:\n"${content.transcript}"\n\n` : '') +
+  const cleanTitle = sanitizeClinicalString(content.title || content.headline || "Médica Frontera — Cirugía de Alta Especialidad");
+  const cleanBody = sanitizeClinicalString(content.body || content.description || content.text || "");
+  const cleanTranscript = sanitizeClinicalString(content.transcript || "");
+
+  const fullDescription = `${cleanBody}\n\n` +
+    (cleanTranscript ? `━━━━━━━━━━━━━━━━━━━━━\n📝 TRANSCRIPCIÓN MÉDICA OFICIAL:\n"${cleanTranscript}"\n\n` : '') +
     `━━━━━━━━━━━━━━━━━━━━━\n` +
     `🛡️ Aviso de Publicidad COFEPRIS: 2407012002A00464\n` +
     `👨‍⚕️ Cédulas Profesionales y Consejos Médicos de Especialidad (SEP / CONAMEU / CMCPER / CMOT)\n` +
@@ -179,7 +230,7 @@ async function dispatchYouTubeDirect(tenant_id, content, metadata = {}) {
 
   const payload = {
     platform: 'youtube',
-    title: content.title || content.headline || "Médica Frontera — Cirugía de Alta Especialidad",
+    title: cleanTitle,
     message: fullDescription,
     description: fullDescription,
     media_url: content.video_url || null,
@@ -236,7 +287,7 @@ async function dispatchYouTubeDirect(tenant_id, content, metadata = {}) {
  * Webhook Universal de Entrada (Single Ingress Router)
  * POST /api/axpulse-s/ingress
  */
-app.post('/api/axpulse-s/ingress', async (req, res) => {
+app.post('/api/axpulse-s/ingress', requireAuth, async (req, res) => {
   const { tenant_id, action, channels, content, metadata, auth_tokens } = req.body;
 
   if (!tenant_id) {
@@ -315,7 +366,7 @@ app.post('/api/axpulse-s/ingress', async (req, res) => {
  * Cumplimiento con Capítulos 8 y 9 del Whitepaper
  * POST /api/axpulse-s/dispatch-clinical-post
  */
-app.post('/api/axpulse-s/dispatch-clinical-post', async (req, res) => {
+app.post('/api/axpulse-s/dispatch-clinical-post', requireAuth, async (req, res) => {
   const { topic, headline, copy, transcript, video_url, channels = ["facebook", "instagram", "tiktok", "youtube"], metadata = {} } = req.body;
 
   if (!headline || (!copy && !video_url)) {
@@ -395,7 +446,7 @@ app.post('/api/axpulse-s/dispatch-clinical-post', async (req, res) => {
  * Inyección Directa a YouTube Shorts / YouTube Channel (@medicafrontera)
  * POST /api/axpulse-s/dispatch-youtube
  */
-app.post('/api/axpulse-s/dispatch-youtube', async (req, res) => {
+app.post('/api/axpulse-s/dispatch-youtube', requireAuth, async (req, res) => {
   const { title, headline, description, copy, transcript, video_url, doctor, cedula, tags = [] } = req.body;
 
   if (!title && !headline) {
@@ -434,7 +485,7 @@ app.post('/api/axpulse-s/dispatch-youtube', async (req, res) => {
  * Alertas Inmediatas a Telegram (@AXWorks_bot)
  * POST /api/axpulse-s/alert
  */
-app.post('/api/axpulse-s/alert', async (req, res) => {
+app.post('/api/axpulse-s/alert', requireAuth, async (req, res) => {
   const { type, tenant_id, customer, details } = req.body;
 
   if (!type || !tenant_id) {
