@@ -6,7 +6,6 @@
  * CERO CONSUMO DE CPU/RAM LOCAL — Compilación desatendida en runners de GitHub
  */
 
-const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
@@ -27,24 +26,31 @@ async function triggerCloudRender(compositionId, customInputs = {}) {
   const url = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/actions/workflows/${GITHUB_CONFIG.workflowId}/dispatches`;
 
   try {
-    const res = await axios.post(
-      url,
-      {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
         ref: GITHUB_CONFIG.ref,
         inputs: {
           composition: compositionId,
           ...customInputs
         }
-      },
-      {
-        headers: {
-          'Accept': 'application/vnd.github+json',
-          'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
-          'X-GitHub-Api-Version': '2022-11-28'
-        },
-        timeout: 15000
-      }
-    );
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return {
+        success: false,
+        status: res.status,
+        error: errText
+      };
+    }
 
     console.log(`[Cloud Render Bridge] Render disparado exitosamente para ${compositionId}. Status: ${res.status}`);
     return {
@@ -54,10 +60,10 @@ async function triggerCloudRender(compositionId, customInputs = {}) {
       dispatched_at: new Date().toISOString()
     };
   } catch (err) {
-    console.error(`[Cloud Render Bridge ERROR]`, err.response?.data || err.message);
+    console.error(`[Cloud Render Bridge ERROR]`, err.message);
     return {
       success: false,
-      error: err.response?.data?.message || err.message
+      error: err.message
     };
   }
 }
@@ -69,16 +75,21 @@ async function getLatestWorkflowRuns(limit = 5) {
   const url = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/actions/workflows/${GITHUB_CONFIG.workflowId}/runs?per_page=${limit}`;
 
   try {
-    const res = await axios.get(url, {
+    const res = await fetch(url, {
       headers: {
         'Accept': 'application/vnd.github+json',
         'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
         'X-GitHub-Api-Version': '2022-11-28'
-      },
-      timeout: 10000
+      }
     });
 
-    const runs = (res.data?.workflow_runs || []).map(r => ({
+    if (!res.ok) {
+      const errText = await res.text();
+      return { success: false, status: res.status, error: errText };
+    }
+
+    const data = await res.json();
+    const runs = (data?.workflow_runs || []).map(r => ({
       id: r.id,
       name: r.name,
       status: r.status,
@@ -90,7 +101,7 @@ async function getLatestWorkflowRuns(limit = 5) {
 
     return { success: true, runs };
   } catch (err) {
-    return { success: false, error: err.response?.data?.message || err.message };
+    return { success: false, error: err.message };
   }
 }
 
