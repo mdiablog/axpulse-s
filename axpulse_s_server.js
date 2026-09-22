@@ -27,10 +27,13 @@ const ZERNIO_CONFIG = {
 
 // Configuración Oficial de TikTok Developers (Medica Frontera App)
 const TIKTOK_CONFIG = {
-  appId: "7688014162606409748",
-  clientKey: "awgxmeuvkr2dfcm6",
+  appId: process.env.TIKTOK_APP_ID || "7688014162606409748",
+  clientKey: process.env.TIKTOK_CLIENT_KEY || "awgxmeuvkr2dfcm6",
+  clientSecret: process.env.TIKTOK_CLIENT_SECRET || "",
   publishEndpoint: "https://open.tiktokapis.com/v2/post/publish/video/init/"
 };
+
+let TIKTOK_USER_TOKEN = process.env.TIKTOK_ACCESS_TOKEN || null;
 
 // Configuración de Notificaciones Telegram (@AXWorks_bot)
 const TELEGRAM_CONFIG = {
@@ -233,7 +236,7 @@ app.post('/api/axpulse-s/dispatch-clinical-post', async (req, res) => {
         const mRes = await dispatchMetaDirect("medica_frontera", ingressPayload.content, ch);
         results.push({ channel: ch, method: "DIRECT_API", ...mRes });
       } else if (ch === 'tiktok') {
-        const token = req.body.tiktok_token || process.env.TIKTOK_ACCESS_TOKEN;
+        const token = req.body.tiktok_token || TIKTOK_USER_TOKEN || process.env.TIKTOK_ACCESS_TOKEN;
         if (token && video_url) {
           const ttRes = await dispatchTikTokDirect(ingressPayload.content, token);
           results.push({ channel: ch, method: "TIKTOK_API_V2", ...ttRes });
@@ -332,6 +335,88 @@ app.post('/api/axpulse-s/alert', async (req, res) => {
     console.error(`[ERROR Telegram Alert]`, err.response?.data || err.message);
     return res.status(500).json({ error: "Fallo al enviar alerta a Telegram", details: err.message });
   }
+});
+
+/**
+ * TikTok OAuth Flow: Login, Callback y Token Exchange
+ */
+app.get('/api/axpulse-s/auth/tiktok/login', (req, res) => {
+  const clientKey = req.query.client_key || TIKTOK_CONFIG.clientKey;
+  const redirectUri = encodeURIComponent("https://axpulse-s.onrender.com/api/axpulse-s/auth/tiktok/callback");
+  const scope = encodeURIComponent("user.info.basic,video.publish,video.upload");
+  const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&state=axpulse_auth`;
+  res.redirect(authUrl);
+});
+
+app.get('/api/axpulse-s/auth/tiktok/callback', async (req, res) => {
+  const { code, error, error_description } = req.query;
+  if (error) {
+    return res.status(400).send(`<h3>Error de autenticación TikTok:</h3><p>${error}: ${error_description}</p>`);
+  }
+  if (!code) {
+    return res.status(400).send(`<h3>No se recibió código de autorización de TikTok.</h3>`);
+  }
+
+  try {
+    const clientKey = process.env.TIKTOK_CLIENT_KEY || TIKTOK_CONFIG.clientKey;
+    const clientSecret = process.env.TIKTOK_CLIENT_SECRET || TIKTOK_CONFIG.clientSecret || "";
+    const redirectUri = "https://axpulse-s.onrender.com/api/axpulse-s/auth/tiktok/callback";
+
+    console.log(`[AXpulse-S] Intercambiando código OAuth por access token de TikTok...`);
+    const params = new URLSearchParams();
+    params.append('client_key', clientKey);
+    params.append('client_secret', clientSecret);
+    params.append('code', code);
+    params.append('grant_type', 'authorization_code');
+    params.append('redirect_uri', redirectUri);
+
+    const tokenResp = await axios.post("https://open.tiktokapis.com/v2/oauth/token/", params.toString(), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cache-Control': 'no-cache'
+      },
+      timeout: 15000
+    });
+
+    const data = tokenResp.data;
+    const accessToken = data.access_token || data.data?.access_token;
+
+    if (accessToken) {
+      TIKTOK_USER_TOKEN = accessToken;
+      console.log(`[AXpulse-S] TikTok Access Token recibido y activado!`);
+      return res.send(`
+        <html>
+          <body style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 60px; background: #F8FAFC;">
+            <div style="background: white; border-radius: 16px; padding: 40px; max-width: 540px; margin: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #E2E8F0;">
+              <div style="font-size: 48px; margin-bottom: 16px;">🛡️</div>
+              <h2 style="color: #0F172A; margin: 0 0 12px;">TikTok Conectado Exitosamente</h2>
+              <p style="color: #475569; font-size: 16px; line-height: 1.5;">El token de acceso de <b>@medicafrontera</b> ha sido vinculado a AXpulse-S en Render.</p>
+              <div style="margin: 24px 0; padding: 12px; background: #F0FDF4; border-radius: 8px; color: #166534; font-weight: 600;">
+                ✓ Content Posting API v2 Lista para Inyección
+              </div>
+            </div>
+          </body>
+        </html>
+      `);
+    } else {
+      return res.status(400).json({ error: "No se obtuvo access_token de TikTok", details: data });
+    }
+  } catch (err) {
+    console.error("[AXpulse-S OAuth Token Error]", err.response?.data || err.message);
+    return res.status(500).json({ error: "Fallo en intercambio de token", details: err.response?.data || err.message, code });
+  }
+});
+
+app.post('/api/axpulse-s/auth/tiktok/token', (req, res) => {
+  const { token, client_secret, client_key } = req.body;
+  if (token) TIKTOK_USER_TOKEN = token;
+  if (client_key) TIKTOK_CONFIG.clientKey = client_key;
+  if (client_secret) TIKTOK_CONFIG.clientSecret = client_secret;
+  return res.json({ 
+    success: true, 
+    message: "Credenciales de TikTok actualizadas.", 
+    token_active: !!TIKTOK_USER_TOKEN 
+  });
 });
 
 app.get('/api/axpulse-s/status', (req, res) => {
