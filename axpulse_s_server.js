@@ -33,7 +33,8 @@ const TIKTOK_CONFIG = {
   publishEndpoint: "https://open.tiktokapis.com/v2/post/publish/video/init/"
 };
 
-let TIKTOK_USER_TOKEN = process.env.TIKTOK_ACCESS_TOKEN || null;
+const TOKEN_FILE = path.join(__dirname, '.tiktok_token');
+let TIKTOK_USER_TOKEN = process.env.TIKTOK_ACCESS_TOKEN || (fs.existsSync(TOKEN_FILE) ? fs.readFileSync(TOKEN_FILE, 'utf8').trim() : null);
 
 // Configuración de Notificaciones Telegram (@AXWorks_bot)
 const TELEGRAM_CONFIG = {
@@ -383,6 +384,7 @@ app.get('/api/axpulse-s/auth/tiktok/callback', async (req, res) => {
 
     if (accessToken) {
       TIKTOK_USER_TOKEN = accessToken;
+      try { fs.writeFileSync(TOKEN_FILE, accessToken, 'utf8'); } catch(e) {}
       console.log(`[AXpulse-S] TikTok Access Token recibido y activado!`);
       return res.send(`
         <html>
