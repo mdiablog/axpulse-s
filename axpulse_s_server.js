@@ -10,6 +10,11 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 
+// Módulos de Gobernanza ADR-037 & Producción Cloud
+const { humanizeClinicalText, validateScriptForVoiceover } = require('./humanizer_filter');
+const { triggerCloudRender, getLatestWorkflowRuns } = require('./cloud_render_bridge');
+const { enqueueContentItem, getWeeklyScheduleStatus, WEEKLY_LIMITS } = require('./weekly_scheduler');
+
 const app = express();
 app.use(express.json());
 
@@ -529,6 +534,96 @@ app.post('/api/axpulse-s/dispatch-youtube', requireAuth, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
+});
+
+/**
+ * =========================================================================
+ * ENDPOINTS DE GOBERNANZA ADR-037: CALENDARIO SEMANAL & RENDERIZADO CLOUD
+ * =========================================================================
+ */
+
+/**
+ * GET /api/axpulse-s/schedule
+ * Devuelve el estado del calendario semanal, cuotas de canales y límites anti-spam
+ */
+app.get('/api/axpulse-s/schedule', (req, res) => {
+  const status = getWeeklyScheduleStatus();
+  return res.json({
+    success: true,
+    governance: "ADR-037 Anti-Spam & Max GEO/SEO",
+    ...status
+  });
+});
+
+/**
+ * POST /api/axpulse-s/schedule/add
+ * Encola un nuevo contenido validando límites semanales y aplicando el filtro humanizer
+ */
+app.post('/api/axpulse-s/schedule/add', requireAuth, (req, res) => {
+  const { channel, content_type, headline, copy, script, video_url, image_urls, scheduled_day, scheduled_hour } = req.body;
+
+  if (!channel) {
+    return res.status(400).json({ success: false, error: "El campo 'channel' es obligatorio (tiktok, youtube_long, youtube_shorts, instagram_reels, instagram_carousels, facebook_feed, blog)." });
+  }
+
+  const result = enqueueContentItem({
+    channel,
+    content_type,
+    headline,
+    copy,
+    script,
+    video_url,
+    image_urls,
+    scheduled_day,
+    scheduled_hour
+  });
+
+  if (!result.success) {
+    return res.status(429).json(result); // 429 Too Many Requests si rebasa la cuota anti-spam
+  }
+
+  return res.json(result);
+});
+
+/**
+ * POST /api/axpulse-s/render-cloud
+ * Dispara el renderizado de un video en GitHub Actions (APEX-Remotion/remotion-video-studio)
+ * CERO CONSUMO DE CPU LOCAL
+ */
+app.post('/api/axpulse-s/render-cloud', requireAuth, async (req, res) => {
+  const { composition } = req.body;
+  const compId = composition || 'MedicaSpotBangMotion';
+
+  const result = await triggerCloudRender(compId, req.body.inputs || {});
+  const statusCode = result.success ? 200 : 502;
+  return res.status(statusCode).json(result);
+});
+
+/**
+ * GET /api/axpulse-s/render-cloud/status
+ * Consulta el estado de las compilaciones en GitHub Actions
+ */
+app.get('/api/axpulse-s/render-cloud/status', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 5;
+  const result = await getLatestWorkflowRuns(limit);
+  return res.json(result);
+});
+
+/**
+ * POST /api/axpulse-s/humanize
+ * Evalúa y purga clichés de IA en textos clínicos y guiones
+ */
+app.post('/api/axpulse-s/humanize', (req, res) => {
+  const { text } = req.body;
+  if (!text) {
+    return res.status(400).json({ success: false, error: "El campo 'text' es obligatorio." });
+  }
+
+  const result = humanizeClinicalText(text);
+  return res.json({
+    success: true,
+    ...result
+  });
 });
 
 /**

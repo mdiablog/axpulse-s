@@ -8,3 +8,5 @@ __pycache__/
 scratch/
 test_*.py
 queue/*.log
+.tiktok_token
+.github_token
