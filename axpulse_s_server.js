@@ -22,6 +22,10 @@ const ZERNIO_CONFIG = {
   keys: {
     apexconsilium: "sk_9b5177e01aa66dfe4aba12aa21d4784ab0fba93f5f840ca03560115a6ac2d4e3",
     medicafrontera: "sk_48a428af12758b8c091a7c2d2a4c8cb75bf669281959378de3e9723d4f511c11"
+  },
+  profiles: {
+    apexconsilium: "6a9d098aa235ca3adedca599",
+    medicafrontera: "6a9d0c204b29547c872ad74e"
   }
 };
 
@@ -212,6 +216,9 @@ async function dispatchYouTubeDirect(tenant_id, content, metadata = {}) {
   const apiKey = (tenant_id === 'medica_frontera') 
     ? ZERNIO_CONFIG.keys.medicafrontera 
     : ZERNIO_CONFIG.keys.apexconsilium;
+  const profileId = (tenant_id === 'medica_frontera')
+    ? ZERNIO_CONFIG.profiles.medicafrontera
+    : ZERNIO_CONFIG.profiles.apexconsilium;
 
   console.log(`[AXpulse-S] Despachando a YouTube (@medicafrontera) para tenant: ${tenant_id}...`);
 
@@ -228,35 +235,72 @@ async function dispatchYouTubeDirect(tenant_id, content, metadata = {}) {
     `📍 Sedes: Tuxtla Gutiérrez • Mérida • Cancún • CDMX\n\n` +
     `#MedicaFrontera #CirugiaEspecializada #SaludMasculina #Urologia #CirugiaPlastica #Traumatologia #Shorts`;
 
-  const payload = {
-    platform: 'youtube',
-    title: cleanTitle,
-    message: fullDescription,
-    description: fullDescription,
-    media_url: content.video_url || null,
-    media_type: 'video',
-    privacy: metadata.privacy || 'public',
-    tags: metadata.tags || ['Medica Frontera', 'Urologia', 'Cirugia', 'COFEPRIS']
-  };
-
   try {
-    const resp = await axios.post(`${ZERNIO_CONFIG.baseUrl}/social/publish`, payload, {
+    // 1. Verificar cuentas conectadas en el profile oficial de Zernio
+    const accResp = await axios.get(`${ZERNIO_CONFIG.baseUrl}/accounts?profileId=${profileId}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      timeout: 15000
+    });
+    const accounts = accResp.data.accounts || [];
+    const ytAccount = accounts.find(a => a.platform === 'youtube');
+
+    if (!ytAccount) {
+      // Obtener URL de consentimiento OAuth oficial para vincular el canal
+      const connResp = await axios.get(`${ZERNIO_CONFIG.baseUrl}/connect/youtube?profileId=${profileId}`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+        timeout: 15000
+      });
+      console.warn(`[AXpulse-S] Canal @medicafrontera no vinculado en Zernio. Se requiere OAuth.`);
+      return {
+        success: false,
+        platform: "youtube",
+        status: "OAUTH_REQUIRED",
+        channel: "@medicafrontera",
+        authUrl: connResp.data.authUrl,
+        message: "Canal de YouTube @medicafrontera no vinculado en Zernio. Se requiere autorización OAuth una sola vez abriendo el enlace authUrl."
+      };
+    }
+
+    // 2. Despacho directo vía Zernio Posts API (POST /v1/posts)
+    const postPayload = {
+      profileId,
+      publishNow: true,
+      title: cleanTitle,
+      content: fullDescription,
+      platforms: [
+        {
+          platform: 'youtube',
+          accountId: ytAccount._id
+        }
+      ],
+      mediaItems: content.video_url ? [
+        {
+          type: 'video',
+          url: content.video_url
+        }
+      ] : [],
+      visibility: metadata.privacy || 'public'
+    };
+
+    const postResp = await axios.post(`${ZERNIO_CONFIG.baseUrl}/posts`, postPayload, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      timeout: 45000
+      timeout: 60000
     });
 
-    console.log(`[AXpulse-S] YouTube API respondió con éxito.`);
-    return { 
-      success: true, 
-      platform: "youtube", 
-      status: resp.status, 
-      data: resp.data,
-      video_title: payload.title,
-      description_length: fullDescription.length
+    console.log(`[AXpulse-S] YouTube publicación exitosa vía Zernio:`, postResp.data);
+    return {
+      success: true,
+      platform: "youtube",
+      status: "PUBLISHED",
+      post_id: postResp.data.post?._id || postResp.data._id,
+      channel: "@medicafrontera",
+      title: cleanTitle,
+      data: postResp.data
     };
+
   } catch (err) {
     const errDetails = err.response?.data || err.message;
     const httpStatus = err.response?.status || 500;
@@ -268,13 +312,12 @@ async function dispatchYouTubeDirect(tenant_id, content, metadata = {}) {
       error: errDetails,
       http_status: httpStatus,
       channel: "@medicafrontera",
-      message: "Fallo real en la API de YouTube/Zernio. Prohibido reportar éxito falso bajo el Protocolo de Verdad Empírica Inmutable.",
+      message: "Fallo en la API real de YouTube/Zernio.",
       details: {
         tenant_id,
         timestamp: new Date().toISOString(),
-        title: payload.title,
-        video_url: payload.media_url,
-        description_length: fullDescription.length,
+        title: cleanTitle,
+        video_url: content.video_url,
         response_error: errDetails
       }
     };
