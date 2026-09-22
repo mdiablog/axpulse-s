@@ -76,17 +76,29 @@ async function dispatchMetaDirect(tenant_id, content, platform = 'facebook') {
 }
 
 /**
- * Despacho Directo a TikTok Content Posting API v2
+ * Despacho Directo a TikTok Content Posting API v2 (FILE_UPLOAD / PUSH)
+ * No requiere verificación previa de dominios
  */
 async function dispatchTikTokDirect(content, userAccessToken) {
-  console.log(`[AXpulse-S] Despachando video a TikTok Content Posting API...`);
+  console.log(`[AXpulse-S] Despachando video a TikTok Content Posting API (FILE_UPLOAD)...`);
 
   if (!content.video_url) {
     return { success: false, error: "TikTok exige un video_url válido (MP4 vertical 9:16)." };
   }
 
   try {
-    const payload = {
+    // 1. Descargar el video a buffer en memoria
+    console.log(`[AXpulse-S] Descargando video desde ${content.video_url}...`);
+    const vidResp = await axios.get(content.video_url, { 
+      responseType: 'arraybuffer',
+      timeout: 30000 
+    });
+    const videoBuffer = Buffer.from(vidResp.data);
+    const videoSize = videoBuffer.length;
+    console.log(`[AXpulse-S] Video descargado: ${videoSize} bytes. Inicializando en TikTok...`);
+
+    // 2. Inicializar publicación directa vía FILE_UPLOAD
+    const initPayload = {
       post_info: {
         title: content.title || content.headline || "Médica Frontera — Red Quirúrgica de Alta Especialidad",
         privacy_level: "PUBLIC_TO_EVERYONE",
@@ -96,12 +108,14 @@ async function dispatchTikTokDirect(content, userAccessToken) {
         video_cover_timestamp_ms: 1000
       },
       source_info: {
-        source: "PULL_FROM_URL",
-        video_url: content.video_url
+        source: "FILE_UPLOAD",
+        video_size: videoSize,
+        chunk_size: videoSize,
+        total_chunk_count: 1
       }
     };
 
-    const resp = await axios.post(TIKTOK_CONFIG.publishEndpoint, payload, {
+    const initResp = await axios.post(TIKTOK_CONFIG.publishEndpoint, initPayload, {
       headers: {
         'Authorization': `Bearer ${userAccessToken}`,
         'Content-Type': 'application/json; charset=UTF-8'
@@ -109,7 +123,34 @@ async function dispatchTikTokDirect(content, userAccessToken) {
       timeout: 45000
     });
 
-    return { success: true, status: resp.status, data: resp.data };
+    const uploadUrl = initResp.data?.data?.upload_url;
+    const publishId = initResp.data?.data?.publish_id;
+
+    if (!uploadUrl) {
+      return { success: false, error: "TikTok no devolvió upload_url", details: initResp.data };
+    }
+
+    console.log(`[AXpulse-S] Transfiriendo video a TikTok (Publish ID: ${publishId})...`);
+    await axios.put(uploadUrl, videoBuffer, {
+      headers: {
+        'Content-Type': 'video/mp4',
+        'Content-Length': videoSize,
+        'Content-Range': `bytes 0-${videoSize - 1}/${videoSize}`
+      },
+      timeout: 60000,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity
+    });
+
+    console.log(`[AXpulse-S] Video subido exitosamente a TikTok!`);
+    return {
+      success: true,
+      publish_id: publishId,
+      status: "PUBLISHED_DIRECT",
+      message: "Video publicado exitosamente en TikTok vía Content Posting API v2.",
+      data: initResp.data
+    };
+
   } catch (err) {
     console.error(`[AXpulse-S TikTok API Error]`, err.response?.data || err.message);
     return { success: false, error: err.response?.data || err.message };
