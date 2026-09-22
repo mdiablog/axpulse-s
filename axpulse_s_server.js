@@ -97,11 +97,11 @@ async function dispatchTikTokDirect(content, userAccessToken) {
     const videoSize = videoBuffer.length;
     console.log(`[AXpulse-S] Video descargado: ${videoSize} bytes. Inicializando en TikTok...`);
 
-    // 2. Inicializar publicación directa vía FILE_UPLOAD
+    // 2. Inicializar publicación directa vía FILE_UPLOAD (Sandbox exige SELF_ONLY)
     const initPayload = {
       post_info: {
-        title: content.title || content.headline || "Médica Frontera — Red Quirúrgica de Alta Especialidad",
-        privacy_level: "PUBLIC_TO_EVERYONE",
+        title: content.title || content.headline || "Médica Frontera — Urología Reconstructiva (COFEPRIS 2407012002A00464)",
+        privacy_level: content.privacy_level || "SELF_ONLY",
         disable_duet: false,
         disable_comment: false,
         disable_stitch: false,
@@ -427,16 +427,40 @@ app.get('/api/axpulse-s/auth/tiktok/callback', async (req, res) => {
       TIKTOK_USER_TOKEN = accessToken;
       try { fs.writeFileSync(TOKEN_FILE, accessToken, 'utf8'); } catch(e) {}
       console.log(`[AXpulse-S] TikTok Access Token recibido y activado!`);
+
+      // Despacho Inmediato del Video Clínico a TikTok
+      let dispatchResult = null;
+      try {
+        console.log(`[AXpulse-S] Disparando despacho automático del video clínico...`);
+        dispatchResult = await dispatchTikTokDirect({
+          title: "Médica Frontera — Urología Reconstructiva (COFEPRIS 2407012002A00464)",
+          video_url: "https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4",
+          privacy_level: "SELF_ONLY"
+        }, accessToken);
+        console.log(`[AXpulse-S] Despacho automático completado:`, dispatchResult);
+      } catch (dispErr) {
+        console.error(`[AXpulse-S] Error en despacho automático:`, dispErr.message);
+        dispatchResult = { success: false, error: dispErr.message };
+      }
+
+      const publishStatusHtml = dispatchResult?.success 
+        ? `<div style="margin: 20px 0; padding: 16px; background: #F0FDF4; border-radius: 8px; color: #166534; font-weight: 600; border: 1px solid #BBF7D0;">
+             🎉 ¡VIDEO PUBLICADO EN TIKTOK!<br>
+             <span style="font-size: 13px; font-weight: normal; color: #15803D;">Publish ID: <code>${dispatchResult.publish_id || 'OK'}</code></span>
+           </div>
+           <p style="color: #64748B; font-size: 14px;">El video clínico Remotion (tema claro, música + voz-off, COFEPRIS) ya está en <b>@medicafrontera</b>.</p>`
+        : `<div style="margin: 20px 0; padding: 16px; background: #FEF2F2; border-radius: 8px; color: #991B1B; font-size: 14px;">
+             Aviso de despacho: ${JSON.stringify(dispatchResult?.error || dispatchResult)}
+           </div>`;
+
       return res.send(`
         <html>
           <body style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 60px; background: #F8FAFC;">
-            <div style="background: white; border-radius: 16px; padding: 40px; max-width: 540px; margin: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #E2E8F0;">
+            <div style="background: white; border-radius: 16px; padding: 40px; max-width: 560px; margin: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #E2E8F0;">
               <div style="font-size: 48px; margin-bottom: 16px;">🛡️</div>
-              <h2 style="color: #0F172A; margin: 0 0 12px;">TikTok Conectado Exitosamente</h2>
-              <p style="color: #475569; font-size: 16px; line-height: 1.5;">El token de acceso de <b>@medicafrontera</b> ha sido vinculado a AXpulse-S en Render.</p>
-              <div style="margin: 24px 0; padding: 12px; background: #F0FDF4; border-radius: 8px; color: #166534; font-weight: 600;">
-                ✓ Content Posting API v2 Lista para Inyección
-              </div>
+              <h2 style="color: #0F172A; margin: 0 0 12px;">Médica Frontera — TikTok Conectado</h2>
+              <p style="color: #475569; font-size: 16px; line-height: 1.5;">El token de acceso de <b>@medicafrontera</b> ha sido activado.</p>
+              ${publishStatusHtml}
             </div>
           </body>
         </html>
