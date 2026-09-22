@@ -258,27 +258,25 @@ async function dispatchYouTubeDirect(tenant_id, content, metadata = {}) {
       description_length: fullDescription.length
     };
   } catch (err) {
-    console.warn(`[AXpulse-S YouTube Direct API Fallback]`, err.response?.data || err.message);
-    const queueEntry = {
-      id: `yt_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      tenant_id,
-      timestamp: new Date().toISOString(),
-      title: payload.title,
-      video_url: payload.media_url,
-      description: fullDescription,
-      transcript: content.transcript,
-      status: "INJECTED_AND_LOGGED",
-      channel: "https://www.youtube.com/@medicafrontera",
-      response: err.response?.data || err.message
-    };
+    const errDetails = err.response?.data || err.message;
+    const httpStatus = err.response?.status || 500;
+    console.error(`[AXpulse-S YouTube Direct API Error] Status: ${httpStatus}`, errDetails);
     return {
-      success: true,
+      success: false,
       platform: "youtube",
-      status: "INJECTED_SUCCESS",
-      injection_id: queueEntry.id,
+      status: "DISPATCH_FAILED",
+      error: errDetails,
+      http_status: httpStatus,
       channel: "@medicafrontera",
-      message: "Video y metadatos clínicos (título, descripción, transcripción y aviso COFEPRIS) inyectados con éxito en AXpulse-S para YouTube.",
-      details: queueEntry
+      message: "Fallo real en la API de YouTube/Zernio. Prohibido reportar éxito falso bajo el Protocolo de Verdad Empírica Inmutable.",
+      details: {
+        tenant_id,
+        timestamp: new Date().toISOString(),
+        title: payload.title,
+        video_url: payload.media_url,
+        description_length: fullDescription.length,
+        response_error: errDetails
+      }
     };
   }
 }
@@ -353,8 +351,12 @@ app.post('/api/axpulse-s/ingress', requireAuth, async (req, res) => {
     }
   }
 
-  return res.json({
-    success: true,
+  const allSuccessful = results.length > 0 && results.every(r => r.success !== false && r.status !== "DISPATCH_FAILED");
+  const anyFailed = results.some(r => r.success === false || r.status === "DISPATCH_FAILED");
+  const statusCode = anyFailed ? (allSuccessful ? 200 : 207) : 200;
+
+  return res.status(statusCode).json({
+    success: allSuccessful && !anyFailed,
     tenant_id,
     content_type: content.video_url ? "REMOTION_VIDEO" : (content.poster_url ? "FABRIC_POSTER" : "TEXT"),
     dispatched: results
@@ -428,8 +430,12 @@ app.post('/api/axpulse-s/dispatch-clinical-post', requireAuth, async (req, res) 
       }
     }
 
-    return res.json({
-      success: true,
+    const allSuccessful = results.length > 0 && results.every(r => r.success !== false && r.status !== "DISPATCH_FAILED");
+    const anyFailed = results.some(r => r.success === false || r.status === "DISPATCH_FAILED");
+    const statusCode = anyFailed ? (allSuccessful ? 200 : 207) : 200;
+
+    return res.status(statusCode).json({
+      success: allSuccessful && !anyFailed,
       service: "Médica Frontera Urología de Alta Especialidad",
       cofepris_compliant: true,
       headline,
@@ -438,7 +444,7 @@ app.post('/api/axpulse-s/dispatch-clinical-post', requireAuth, async (req, res) 
     });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -469,15 +475,16 @@ app.post('/api/axpulse-s/dispatch-youtube', requireAuth, async (req, res) => {
 
   try {
     const result = await dispatchYouTubeDirect("medica_frontera", content, metadata);
-    return res.json({
-      success: true,
+    const statusCode = result.success ? 200 : 502;
+    return res.status(statusCode).json({
+      success: result.success === true,
       service: "Médica Frontera YouTube Injection Engine",
       target_channel: "https://www.youtube.com/@medicafrontera",
       cofepris_folio: "2407012002A00464",
       result
     });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -601,20 +608,8 @@ app.get('/api/axpulse-s/auth/tiktok/callback', async (req, res) => {
       try { fs.writeFileSync(TOKEN_FILE, accessToken, 'utf8'); } catch(e) {}
       console.log(`[AXpulse-S] TikTok Access Token recibido y activado!`);
 
-      // Despacho Inmediato del Video Clínico a TikTok
-      let dispatchResult = null;
-      try {
-        console.log(`[AXpulse-S] Disparando despacho automático del video clínico...`);
-        dispatchResult = await dispatchTikTokDirect({
-          title: "Médica Frontera — Urología Reconstructiva (COFEPRIS 2407012002A00464)",
-          video_url: "https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4",
-          privacy_level: "SELF_ONLY"
-        }, accessToken);
-        console.log(`[AXpulse-S] Despacho automático completado:`, dispatchResult);
-      } catch (dispErr) {
-        console.error(`[AXpulse-S] Error en despacho automático:`, dispErr.message);
-        dispatchResult = { success: false, error: dispErr.message };
-      }
+      // El token ha sido activado. No despachar URLs no autorizadas de hosting.
+      let dispatchResult = { success: true, message: "Token activado. Listo para recibir video_url vía API ingress." };
 
       const publishStatusHtml = dispatchResult?.success 
         ? `<div style="margin: 20px 0; padding: 16px; background: #F0FDF4; border-radius: 8px; color: #166534; font-weight: 600; border: 1px solid #BBF7D0;">
