@@ -28,8 +28,8 @@ const ZERNIO_CONFIG = {
 // Configuración Oficial de TikTok Developers (Medica Frontera App)
 const TIKTOK_CONFIG = {
   appId: process.env.TIKTOK_APP_ID || "7688014162606409748",
-  clientKey: process.env.TIKTOK_CLIENT_KEY || "awgxmeuvkr2dfcm6",
-  clientSecret: process.env.TIKTOK_CLIENT_SECRET || "",
+  clientKey: process.env.TIKTOK_CLIENT_KEY || "sbawk88emjz4g51sxq",
+  clientSecret: process.env.TIKTOK_CLIENT_SECRET || "3ZGXgeTYqWqDM8wG9h2NqQtEIWD0F8ch",
   publishEndpoint: "https://open.tiktokapis.com/v2/post/publish/video/init/"
 };
 
