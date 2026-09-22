@@ -1,0 +1,10 @@
+# APEX Security Shield - Git Ignore
+.env
+.env.*
+node_modules/
+__pycache__/
+*.pyc
+*.log
+scratch/
+test_*.py
+queue/*.log
