@@ -534,7 +534,7 @@ app.post('/api/axpulse-s/ingress', requireAuth, async (req, res) => {
  * POST /api/axpulse-s/dispatch-clinical-post
  */
 app.post('/api/axpulse-s/dispatch-clinical-post', requireAuth, async (req, res) => {
-  const { topic, headline, copy, transcript, video_url, channels = ["facebook", "instagram", "tiktok", "youtube"], metadata = {} } = req.body;
+  const { topic, headline, copy, transcript, video_url, poster_url, image_url, channels = ["facebook", "instagram", "tiktok", "youtube"], metadata = {} } = req.body;
 
   if (!headline || (!copy && !video_url)) {
     return res.status(400).json({ error: "Faltan 'headline' y ('copy' o 'video_url') para el post clínico." });
@@ -555,6 +555,8 @@ app.post('/api/axpulse-s/dispatch-clinical-post', requireAuth, async (req, res) 
       body: formattedBody,
       transcript: transcript || metadata?.transcript || "",
       video_url: video_url || null,
+      poster_url: poster_url || image_url || null,
+      image_url: poster_url || image_url || null,
       format: video_url ? "1080x1920" : "1080x1080",
       theme: "clinical_clean",
       badge: "COFEPRIS 2407012002A00464"
