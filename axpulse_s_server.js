@@ -17,6 +17,7 @@ const { enqueueContentItem, getWeeklyScheduleStatus, executeCronTick, WEEKLY_LIM
 
 const app = express();
 app.use(express.json());
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3099;
 const FABRIC_STUDIO_URL = process.env.FABRIC_STUDIO_URL || "https://apex-fabric-studio.onrender.com";
@@ -103,10 +104,10 @@ function sanitizeClinicalString(str) {
  */
 async function dispatchMetaDirect(tenant_id, content, platform = 'facebook') {
   const metaToken = process.env.META_SYSTEM_TOKEN || 
-    "EAAYT78vDTJ8BSXyI5ta3oaazn5Pz5ez0cYrqdZBYdB9tBuIhhGl7ZAz2kYx2gdTYIU9OGTZAiQMz7VROaElf4Gu7NeHyDmA8sZBO6FzwXfBjsGpXM6PaevLUtQbvEQQ5q6yzGEtKUe48wlQuZC2BCZBoSC6jodMMTIshuCCvlTo9qwOdnljuoNF5wB3v7xbHB7XwZDZD";
+    "EAAYT78vDTJ8BSiH9Iwx4FrBDwsjbZAXJDxSA9XBY0UeGuPZANnXbyfWgYQ3NdtH2g1PxjzkYW2DLZA91bsoZAJnuQMbIQpkSkxNDrSJLOmMueUGuam8mOwc5ZA1NmXi0cw8XdtwY1FCGVTnyqA6pb6vIzNu3Up5HdF1MTzplZBwnxZBNJ90UiR59SpuDilv";
   
   const pageToken = process.env.PAGE_ACCESS_TOKEN || 
-    "EAAYT78vDTJ8BSRWTCkWKBO7cBBSk0ySUiUOkxPx6P9YeXFokCaJFNzVrR4ueGdLl427oaqolWZA1UNSzUx8Ls8YYoZBSBuZByKdmKEKqvzniJgVZCGfCOxO0PSXcj6xpa6vKFeFHlqfGUu2vZBSDlR91ZAKxtYdLNmbaQo7FvrpHgwsFiP1lidLZC2FIfWFaD6W2Td2xXI9w88mtjXDyoJ1XZARkbZBEMNLS3ZByvYiO1UShLgAcqAHzPYh2IZD";
+    "EAAYT78vDTJ8BSnJmY4ouY3xxFpyKkMMHkJUgIK1HZC57Xw5izR7WDcNOWVHK7ZCdCbbANAjyJ8JvgyC33iT4ZCPZCq7RcixG7jootWllnycnnDP4SIpa6wTGQLWlhLfvNPNemWu27WJQXqoJf2eRkxeO5l05o1kvcsYN2igfHcG3TaneZBtVajjbiakPm8Sh4AgZB6";
 
   const fbPageId = process.env.META_PAGE_ID || "1229787630225904";
   const igUserId = process.env.INSTAGRAM_BUSINESS_ID || "17841439167124221";
