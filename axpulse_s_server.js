@@ -151,7 +151,27 @@ async function dispatchMetaDirect(tenant_id, content, platform = 'facebook') {
 
       console.log(`[AXpulse-S Meta IG] Contenedor creado (ID: ${creationId}). Esperando procesamiento...`);
       if (content.video_url) {
-        await new Promise(r => setTimeout(r, 6000));
+        let ready = false;
+        let attempts = 0;
+        while (!ready && attempts < 15) {
+          await new Promise(r => setTimeout(r, 3000));
+          attempts++;
+          try {
+            const statusResp = await axios.get(`https://graph.facebook.com/v21.0/${creationId}`, {
+              params: { fields: 'status_code', access_token: metaToken },
+              timeout: 10000
+            });
+            const status = statusResp.data?.status_code;
+            console.log(`[AXpulse-S Meta IG] Contenedor ${creationId} status: ${status} (intento ${attempts}/15)`);
+            if (status === 'FINISHED') {
+              ready = true;
+            } else if (status === 'ERROR') {
+              throw new Error('Meta reportó error en el procesamiento del video.');
+            }
+          } catch (statusErr) {
+            console.warn(`[AXpulse-S Meta IG] Aviso de sondeo de estado:`, statusErr.message);
+          }
+        }
       }
 
       console.log(`[AXpulse-S Meta IG] Publicando contenedor ${creationId}...`);
