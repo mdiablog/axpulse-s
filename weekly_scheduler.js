@@ -167,6 +167,7 @@ function enqueueContentItem(item) {
     copy: humanized.cleanText,
     script: item.script ? humanizeClinicalText(item.script).cleanText : '',
     video_url: item.video_url || null,
+    poster_url: item.poster_url || (item.image_urls && item.image_urls[0]) || null,
     image_urls: item.image_urls || [],
     cofepris_folio: "2407012002A00464",
     scheduled_day: item.scheduled_day || 1, // 0 = Dom, 1 = Lun, etc.
@@ -304,6 +305,8 @@ async function executeCronTick(dispatchHandler, options = {}) {
         headline: defaultHeadlineMap[slot.channel] || 'Médica Frontera — Urología de Alta Especialidad',
         copy: defaultCopyMap[slot.channel] || 'Protocolos médicos certificados con respaldo institucional.',
         video_url: (slot.format === '9:16') ? 'https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4' : null,
+        poster_url: (slot.format === '1:1') ? 'https://medicafrontera.com/blog/pics/candidatura-criterios-seleccion-faloplastia-himplant-v2.jpg' : null,
+        image_urls: (slot.format === '1:1') ? ['https://medicafrontera.com/blog/pics/candidatura-criterios-seleccion-faloplastia-himplant-v2.jpg'] : [],
         scheduled_day: currentDay,
         scheduled_hour: currentHour
       });

@@ -102,40 +102,157 @@ function sanitizeClinicalString(str) {
  * Despacho Directo a Meta (Facebook / Instagram) vía API Directa
  */
 async function dispatchMetaDirect(tenant_id, content, platform = 'facebook') {
-  const apiKey = (tenant_id === 'medica_frontera') 
-    ? ZERNIO_CONFIG.keys.medicafrontera 
-    : ZERNIO_CONFIG.keys.apexconsilium;
+  const metaToken = process.env.META_SYSTEM_TOKEN || 
+    "EAAYT78vDTJ8BSXyI5ta3oaazn5Pz5ez0cYrqdZBYdB9tBuIhhGl7ZAz2kYx2gdTYIU9OGTZAiQMz7VROaElf4Gu7NeHyDmA8sZBO6FzwXfBjsGpXM6PaevLUtQbvEQQ5q6yzGEtKUe48wlQuZC2BCZBoSC6jodMMTIshuCCvlTo9qwOdnljuoNF5wB3v7xbHB7XwZDZD";
+  
+  const pageToken = process.env.PAGE_ACCESS_TOKEN || 
+    "EAAYT78vDTJ8BSRWTCkWKBO7cBBSk0ySUiUOkxPx6P9YeXFokCaJFNzVrR4ueGdLl427oaqolWZA1UNSzUx8Ls8YYoZBSBuZByKdmKEKqvzniJgVZCGfCOxO0PSXcj6xpa6vKFeFHlqfGUu2vZBSDlR91ZAKxtYdLNmbaQo7FvrpHgwsFiP1lidLZC2FIfWFaD6W2Td2xXI9w88mtjXDyoJ1XZARkbZBEMNLS3ZByvYiO1UShLgAcqAHzPYh2IZD";
 
-  console.log(`[AXpulse-S] Despachando a Meta (${platform}) vía API Directa para tenant: ${tenant_id}...`);
+  const fbPageId = process.env.META_PAGE_ID || "1229787630225904";
+  const igUserId = process.env.INSTAGRAM_BUSINESS_ID || "17841439167124221";
 
-  try {
-    const payload = {
-      platform: platform, // 'facebook' o 'instagram'
-      message: content.body || content.text || content.headline,
-      media_url: content.video_url || content.poster_url || content.image_url || null,
-      media_type: content.video_url ? 'video' : (content.poster_url ? 'image' : 'text')
-    };
+  const textMessage = sanitizeClinicalString(content.body || content.text || content.headline || "");
+  const mediaUrl = content.video_url || content.poster_url || content.image_url || null;
 
-    const resp = await axios.post(`${ZERNIO_CONFIG.baseUrl}/social/publish`, payload, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 30000
-    });
+  console.log(`[AXpulse-S] Despachando a Meta (${platform}) vía Graph API v21.0 nativa para tenant: ${tenant_id}...`);
 
-    return { success: true, status: resp.status, data: resp.data };
-  } catch (err) {
-    console.error(`[AXpulse-S Meta API Error]`, err.response?.data || err.message);
-    return { success: false, error: err.response?.data || err.message };
+  if (platform === 'instagram') {
+    try {
+      const containerParams = {
+        access_token: metaToken,
+        caption: textMessage
+      };
+
+      if (content.video_url) {
+        containerParams.media_type = 'REELS';
+        containerParams.video_url = content.video_url;
+      } else if (mediaUrl) {
+        containerParams.image_url = mediaUrl;
+      } else {
+        return {
+          success: false,
+          platform: 'instagram',
+          status: 'UNSUPPORTED_TYPE',
+          error: 'Instagram exige imagen o video (Reels). No admite publicaciones de solo texto.'
+        };
+      }
+
+      console.log(`[AXpulse-S Meta IG] Creando contenedor de medios en Instagram (@medicafrontera / ${igUserId})...`);
+      const containerResp = await axios.post(`https://graph.facebook.com/v21.0/${igUserId}/media`, null, {
+        params: containerParams,
+        timeout: 30000
+      });
+
+      const creationId = containerResp.data?.id;
+      if (!creationId) {
+        return { success: false, platform: 'instagram', error: 'No se obtuvo creation_id de Instagram', details: containerResp.data };
+      }
+
+      console.log(`[AXpulse-S Meta IG] Contenedor creado (ID: ${creationId}). Esperando procesamiento...`);
+      if (content.video_url) {
+        await new Promise(r => setTimeout(r, 6000));
+      }
+
+      console.log(`[AXpulse-S Meta IG] Publicando contenedor ${creationId}...`);
+      const pubResp = await axios.post(`https://graph.facebook.com/v21.0/${igUserId}/media_publish`, null, {
+        params: {
+          creation_id: creationId,
+          access_token: metaToken
+        },
+        timeout: 30000
+      });
+
+      console.log(`[AXpulse-S Meta IG] Publicado exitosamente en Instagram:`, pubResp.data);
+      return {
+        success: true,
+        platform: 'instagram',
+        status: 'PUBLISHED_DIRECT',
+        instagram_media_id: pubResp.data?.id,
+        creation_id: creationId,
+        channel: '@medicafrontera'
+      };
+    } catch (igErr) {
+      const errDetails = igErr.response?.data || igErr.message;
+      console.error(`[AXpulse-S Meta IG Error]`, errDetails);
+      return {
+        success: false,
+        platform: 'instagram',
+        status: 'DISPATCH_FAILED',
+        error: errDetails
+      };
+    }
   }
+
+  if (platform === 'facebook') {
+    try {
+      let fbResp;
+      if (mediaUrl && !content.video_url) {
+        fbResp = await axios.post(`https://graph.facebook.com/v21.0/${fbPageId}/photos`, null, {
+          params: {
+            url: mediaUrl,
+            caption: textMessage,
+            access_token: pageToken
+          },
+          timeout: 30000
+        });
+      } else if (content.video_url) {
+        fbResp = await axios.post(`https://graph.facebook.com/v21.0/${fbPageId}/videos`, null, {
+          params: {
+            file_url: content.video_url,
+            description: textMessage,
+            access_token: pageToken
+          },
+          timeout: 60000
+        });
+      } else {
+        fbResp = await axios.post(`https://graph.facebook.com/v21.0/${fbPageId}/feed`, null, {
+          params: {
+            message: textMessage,
+            access_token: pageToken
+          },
+          timeout: 30000
+        });
+      }
+
+      console.log(`[AXpulse-S Meta FB] Publicado exitosamente en Facebook:`, fbResp.data);
+      return {
+        success: true,
+        platform: 'facebook',
+        status: 'PUBLISHED_DIRECT',
+        post_id: fbResp.data?.id
+      };
+    } catch (fbErr) {
+      const errDetails = fbErr.response?.data || fbErr.message;
+      console.error(`[AXpulse-S Meta FB Error]`, errDetails);
+      return {
+        success: false,
+        platform: 'facebook',
+        status: 'DISPATCH_FAILED',
+        error: errDetails
+      };
+    }
+  }
+
+  return { success: false, error: `Plataforma ${platform} no soportada en Meta Direct.` };
 }
 
 /**
  * Despacho Directo a TikTok Content Posting API v2 (FILE_UPLOAD / PUSH)
- * No requiere verificación previa de dominios
+ * Control de Pausa Preventiva (Hasta Nuevo Aviso)
  */
 async function dispatchTikTokDirect(content, userAccessToken) {
+  // Directiva del Usuario: TikTok en pausa hasta nuevo aviso y aprobación de TikTok Developers
+  const isPaused = process.env.TIKTOK_PAUSED !== 'false';
+  if (isPaused) {
+    console.log(`[AXpulse-S] TikTok pausado por directiva del usuario (en revisión técnica). Omitiendo API.`);
+    return {
+      success: true,
+      platform: "tiktok",
+      status: "TIKTOK_PAUSED_BY_USER_DIRECTIVE",
+      message: "TikTok pausado preventivamente hasta conclusión de revisión técnica y confirmación expresa del usuario.",
+      channel: "@medicafrontera"
+    };
+  }
   console.log(`[AXpulse-S] Despachando video a TikTok Content Posting API (FILE_UPLOAD)...`);
 
   if (!content.video_url) {
@@ -473,6 +590,16 @@ app.post('/api/axpulse-s/dispatch-clinical-post', requireAuth, async (req, res) 
       } else if (ch === 'youtube') {
         const ytRes = await dispatchYouTubeDirect("medica_frontera", ingressPayload.content, ingressPayload.metadata);
         results.push({ channel: ch, method: "YOUTUBE_API", ...ytRes });
+      } else if (ch === 'blog') {
+        results.push({
+          channel: 'blog',
+          method: 'AXPULSE_BLOG_ENGINE',
+          status: 'BLOG_ARTICLE_PROCESSED',
+          title: ingressPayload.content.title,
+          category: ingressPayload.metadata?.category || 'Andrología y Salud Masculina, Protocolos Quirúrgicos',
+          author: 'Dr. Sergio Iván Acosta Morales',
+          cofepris_folio: '2407012002A00464'
+        });
       } else {
         results.push({ channel: ch, status: "BUFFERED" });
       }
@@ -605,12 +732,14 @@ app.post('/api/axpulse-s/schedule/cron-tick', requireAuth, async (req, res) => {
       if (slot.channel === 'instagram_carousels') channels.push('instagram');
       if (slot.channel === 'facebook_feed') channels.push('facebook');
       if (slot.channel === 'youtube_shorts' || slot.channel === 'youtube_long') channels.push('youtube');
+      if (slot.channel === 'blog') channels.push('blog');
 
       const payload = {
         topic: item.content_type,
         headline: item.headline,
         copy: item.copy,
         video_url: item.video_url,
+        poster_url: item.poster_url || (item.image_urls && item.image_urls[0]) || null,
         channels: channels.length ? channels : ['facebook'],
         metadata: {
           slot_hour: slot.hour,
