@@ -1097,8 +1097,8 @@ app.get('/', (req, res) => {
       <div class="card">
         <h2>🎬 Video Clínico Listo para Envío</h2>
         <div class="video-preview">
-          <video controls poster="https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4">
-            <source src="https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4" type="video/mp4">
+          <video controls poster="https://medicafrontera.com/assets/media/medica_frontera_tiktok_light.mp4">
+            <source src="https://medicafrontera.com/assets/media/medica_frontera_tiktok_light.mp4" type="video/mp4">
             Tu navegador no soporta video MP4.
           </video>
         </div>
@@ -1143,7 +1143,7 @@ app.get('/', (req, res) => {
           body: JSON.stringify({
             headline: 'Médica Frontera — Urología Reconstructiva (COFEPRIS 2407012002A00464)',
             copy: 'Procedimientos de alta especialidad urológica y reconstructiva en Médica Frontera.',
-            video_url: 'https://apexconsilium.com/video/medica_frontera_tiktok_light.mp4',
+            video_url: 'https://medicafrontera.com/assets/media/medica_frontera_tiktok_light.mp4',
             channels: ['tiktok']
           })
         });

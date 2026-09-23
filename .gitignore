@@ -10,3 +10,8 @@ test_*.py
 queue/*.log
 .tiktok_token
 .github_token
+*.mp4
+*.mov
+*.avi
+public/videos/*.mp4
+tmp/
